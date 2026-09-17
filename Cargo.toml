@@ -1,0 +1,12 @@
+[package]
+name = "mg-terrm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = "0.29"
+wgpu = "22"          # Downgrade to match glyphon 0.6.0
+glyphon = "0.6"
+portable-pty = "0.8"
+vte = "0.11"
+pollster = "0.3"     # Added missing sync helper crate
