@@ -115,8 +115,7 @@ fn spawn_terminal_shell() -> (Box<dyn Read + Send>, Box<dyn Write + Send>) {
         })
         .expect("failed to create PTY");
 
-    let shell_path =
-        "/home/mgeist/geistos/mg-suite/mg-shellr/target/release/mg-shellr";
+    let shell_path = "/home/mgeist/geistos/mg-suite/mg-shellr/target/release/mg-shellr";
 
     let cmd = CommandBuilder::new(shell_path);
 
@@ -137,10 +136,7 @@ fn spawn_terminal_shell() -> (Box<dyn Read + Send>, Box<dyn Write + Send>) {
     (reader, writer)
 }
 
-fn handle_key_event(
-    key_event: &winit::event::KeyEvent,
-    pty_writer: &mut Box<dyn Write + Send>,
-) {
+fn handle_key_event(key_event: &winit::event::KeyEvent, pty_writer: &mut Box<dyn Write + Send>) {
     if key_event.state != ElementState::Pressed {
         return;
     }
@@ -192,13 +188,11 @@ fn main() {
         .create_surface(window.clone())
         .expect("failed to create surface");
 
-    let adapter = pollster::block_on(instance.request_adapter(
-        &wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            force_fallback_adapter: false,
-            compatible_surface: Some(&surface),
-        },
-    ))
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        force_fallback_adapter: false,
+        compatible_surface: Some(&surface),
+    }))
     .expect("failed to find GPU adapter");
 
     let (device, queue) = pollster::block_on(adapter.request_device(
@@ -229,15 +223,10 @@ fn main() {
 
     let cache = glyphon::Cache::new(&device);
 
-    let mut atlas =
-        glyphon::TextAtlas::new(&device, &queue, &cache, config.format);
+    let mut atlas = glyphon::TextAtlas::new(&device, &queue, &cache, config.format);
 
-    let mut text_renderer = glyphon::TextRenderer::new(
-        &mut atlas,
-        &device,
-        wgpu::MultisampleState::default(),
-        None,
-    );
+    let mut text_renderer =
+        glyphon::TextRenderer::new(&mut atlas, &device, wgpu::MultisampleState::default(), None);
 
     let mut viewport = glyphon::Viewport::new(&device, &cache);
 
@@ -249,8 +238,7 @@ fn main() {
         },
     );
 
-    let mut buffer =
-        glyphon::Buffer::new(&mut font_system, glyphon::Metrics::new(16.0, 20.0));
+    let mut buffer = glyphon::Buffer::new(&mut font_system, glyphon::Metrics::new(16.0, 20.0));
 
     buffer.set_size(
         &mut font_system,
@@ -301,187 +289,177 @@ fn main() {
     // Event loop
     // ---------------------------------------------------------------------
 
-    let _ = event_loop.run(move |event, elwt| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
+    let _ = event_loop.run(move |event, elwt| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            elwt.exit();
+        }
+
+        Event::WindowEvent {
+            event: WindowEvent::Resized(new_size),
+            ..
+        } => {
+            if new_size.width == 0 || new_size.height == 0 {
+                return;
             }
 
-            Event::WindowEvent {
-                event: WindowEvent::Resized(new_size),
-                ..
-            } => {
-                if new_size.width == 0 || new_size.height == 0 {
-                    return;
-                }
+            config.width = new_size.width;
+            config.height = new_size.height;
 
-                config.width = new_size.width;
-                config.height = new_size.height;
+            surface.configure(&device, &config);
 
-                surface.configure(&device, &config);
-
-                viewport.update(
-                    &queue,
-                    glyphon::Resolution {
-                        width: new_size.width,
-                        height: new_size.height,
-                    },
-                );
-
-                buffer.set_size(
-                    &mut font_system,
-                    Some(new_size.width as f32),
-                    Some(new_size.height as f32),
-                );
-
-                window.request_redraw();
-            }
-
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput {
-                    event: key_event, ..
+            viewport.update(
+                &queue,
+                glyphon::Resolution {
+                    width: new_size.width,
+                    height: new_size.height,
                 },
-                ..
-            } => {
-                handle_key_event(&key_event, &mut pty_writer);
-            }
+            );
 
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let mut should_render = false;
-                let mut text_content = String::new();
+            buffer.set_size(
+                &mut font_system,
+                Some(new_size.width as f32),
+                Some(new_size.height as f32),
+            );
 
-                if let Ok(mut locked_grid) = grid.lock() {
-                    if locked_grid.dirty {
-                        for row in &locked_grid.cells {
-                            for cell in row {
-                                text_content.push(cell.c);
-                            }
+            window.request_redraw();
+        }
 
-                            text_content.push('\n');
+        Event::WindowEvent {
+            event: WindowEvent::KeyboardInput {
+                event: key_event, ..
+            },
+            ..
+        } => {
+            handle_key_event(&key_event, &mut pty_writer);
+        }
+
+        Event::WindowEvent {
+            event: WindowEvent::RedrawRequested,
+            ..
+        } => {
+            let mut should_render = false;
+            let mut text_content = String::new();
+
+            if let Ok(mut locked_grid) = grid.lock() {
+                if locked_grid.dirty {
+                    for row in &locked_grid.cells {
+                        for cell in row {
+                            text_content.push(cell.c);
                         }
 
-                        locked_grid.dirty = false;
-                        should_render = true;
+                        text_content.push('\n');
                     }
-                }
 
-                if !should_render {
+                    locked_grid.dirty = false;
+                    should_render = true;
+                }
+            }
+
+            if !should_render {
+                return;
+            }
+
+            buffer.set_text(
+                &mut font_system,
+                &text_content,
+                glyphon::Attrs::new().family(glyphon::Family::Monospace),
+                glyphon::Shaping::Basic,
+            );
+
+            let text_area = glyphon::TextArea {
+                buffer: &buffer,
+                left: 10.0,
+                top: 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: window.inner_size().width as i32,
+                    bottom: window.inner_size().height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            };
+
+            text_renderer
+                .prepare(
+                    &device,
+                    &queue,
+                    &mut font_system,
+                    &mut atlas,
+                    &viewport,
+                    [text_area],
+                    &mut swash_cache,
+                )
+                .expect("failed to prepare text renderer");
+
+            let frame = match surface.get_current_texture() {
+                Ok(frame) => frame,
+
+                Err(wgpu::SurfaceError::Lost) => {
+                    surface.configure(&device, &config);
+                    window.request_redraw();
                     return;
                 }
 
-                buffer.set_text(
-                    &mut font_system,
-                    &text_content,
-                    glyphon::Attrs::new()
-                        .family(glyphon::Family::Monospace),
-                    glyphon::Shaping::Basic,
-                );
-
-                text_renderer
-                    .prepare(
-                        &device,
-                        &queue,
-                        &mut font_system,
-                        &mut atlas,
-                        &viewport,
-                        &[glyphon::TextArea {
-                            buffer: &buffer,
-                            left: 10.0,
-                            top: 10.0,
-                            scale: 1.0,
-                            bounds: glyphon::TextBounds {
-                                left: 0,
-                                top: 0,
-                                right: window.inner_size().width as i32,
-                                bottom: window.inner_size().height as i32,
-                            },
-                            default_color: glyphon::Color::rgb(
-                                255, 255, 255,
-                            ),
-                            custom_glyphs: &[],
-                        }],
-                        &mut swash_cache,
-                    )
-                    .expect("failed to prepare text renderer");
-
-                let frame = match surface.get_current_texture() {
-                    Ok(frame) => frame,
-
-                    Err(wgpu::SurfaceError::Lost) => {
-                        surface.configure(&device, &config);
-                        window.request_redraw();
-                        return;
-                    }
-
-                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                        elwt.exit();
-                        return;
-                    }
-
-                    Err(_) => {
-                        window.request_redraw();
-                        return;
-                    }
-                };
-
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-
-                let mut encoder = device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
-                    },
-                );
-
-                {
-                    let mut pass =
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("Render Pass"),
-
-                            color_attachments: &[Some(
-                                wgpu::RenderPassColorAttachment {
-                                    view: &view,
-                                    resolve_target: None,
-
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Clear(
-                                            wgpu::Color {
-                                                r: 0.05,
-                                                g: 0.05,
-                                                b: 0.07,
-                                                a: 1.0,
-                                            },
-                                        ),
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                },
-                            )],
-
-                            depth_stencil_attachment: None,
-                            timestamp_writes: None,
-                            occlusion_query_set: None,
-                        });
-
-                    text_renderer
-                        .render(&atlas, &viewport, &mut pass)
-                        .expect("failed to render terminal text");
+                Err(wgpu::SurfaceError::OutOfMemory) => {
+                    elwt.exit();
+                    return;
                 }
 
-                queue.submit(std::iter::once(encoder.finish()));
+                Err(_) => {
+                    window.request_redraw();
+                    return;
+                }
+            };
 
-                frame.present();
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
 
-                atlas.trim();
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.05,
+                                g: 0.05,
+                                b: 0.07,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+
+                text_renderer
+                    .render(&atlas, &viewport, &mut pass)
+                    .expect("failed to render terminal text");
             }
 
-            _ => {}
+            queue.submit(std::iter::once(encoder.finish()));
+
+            frame.present();
+
+            atlas.trim();
         }
+
+        _ => {}
     });
 }
